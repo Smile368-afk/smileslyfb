@@ -1,27 +1,30 @@
 require('dotenv').config();
-
 const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('✅ Connected to MongoDB');
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-  });
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ✅ Middleware
 app.use(cors());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ✅ Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
 
 // ✅ Multer setup
 const storage = multer.diskStorage({
@@ -54,17 +57,28 @@ const contactSchema = new mongoose.Schema({
 });
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Test route
+// ✅ Root Test Route
 app.get('/', (req, res) => {
-  res.send('Server is working!');
+  res.send('✅ Server is working!');
 });
 
-// ✅ Checkout route
+// ✅ Checkout Route
 app.post('/checkout', upload.single('screenshot'), async (req, res) => {
   try {
     const { name, contact, address, paymentMethod } = req.body;
     const screenshot = req.file ? req.file.filename : null;
-    const cart = JSON.parse(req.body.cart);
+
+    // Parse cart safely
+    let cart = [];
+    try {
+      cart = JSON.parse(req.body.cart);
+      if (!Array.isArray(cart) || cart.length === 0) {
+        return res.status(400).send('Cart is empty or invalid');
+      }
+    } catch (err) {
+      console.error('❌ Failed to parse cart:', err);
+      return res.status(400).send('Invalid cart format');
+    }
 
     const ordersToSave = cart.map(item => ({
       name,
@@ -79,10 +93,10 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     }));
 
     await Order.insertMany(ordersToSave);
-    res.status(200).send('Order saved successfully');
+    res.status(200).send('✅ Order saved successfully');
   } catch (err) {
     console.error('❌ Error saving order:', err);
-    res.status(500).send('Failed to save order');
+    res.status(500).send('❌ Failed to save order');
   }
 });
 
@@ -92,8 +106,8 @@ app.get('/orders', async (req, res) => {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
-    console.error('Error fetching orders:', err);
-    res.status(500).send('Failed to fetch orders');
+    console.error('❌ Error fetching orders:', err);
+    res.status(500).send('❌ Failed to fetch orders');
   }
 });
 
@@ -101,25 +115,31 @@ app.get('/orders', async (req, res) => {
 app.delete('/orders/:id', async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
-    res.status(200).send('Order deleted');
+    res.status(200).send('✅ Order deleted');
   } catch (err) {
     console.error('❌ Error deleting order:', err);
-    res.status(500).send('Failed to delete order');
+    res.status(500).send('❌ Failed to delete order');
   }
 });
 
-// 📩 Contact Form Route
+// ✅ Contact Form Route
 app.post('/contact', async (req, res) => {
-  const { name, phone, message } = req.body;
   try {
+    const { name, phone, message } = req.body;
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
-    res.send("Message received! Our team will contact you soon.");
+    res.send("✅ Message received! Our team will contact you soon.");
   } catch (err) {
-    console.error("Error saving contact message:", err);
-    res.status(500).send("Failed to send message.");
+    console.error("❌ Error saving contact message:", err);
+    res.status(500).send("❌ Failed to send message.");
   }
 });
+
+// ✅ Start Server
+app.listen(PORT, () => {
+  console.log(`✅ Server running at http://localhost:${PORT}`);
+});
+
 
 // ✅ Start server
 app.listen(PORT, () => {
