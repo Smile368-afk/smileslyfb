@@ -19,9 +19,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Serve static files
+// ✅ Serve uploads folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.static(path.join(__dirname, 'frontend'))); // <-- Serve frontend folder
+
+// ✅ Serve frontend folder (fix for Render + static access)
+app.use('/', express.static(path.join(__dirname, 'frontend')));
 
 // ✅ Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -136,12 +138,6 @@ app.post('/contact', async (req, res) => {
     res.status(500).send("❌ Failed to send message.");
   }
 });
-
-// ✅ Route to serve admin.html directly
-app.get('/admin.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
-});
-
 
 // ✅ Start Server
 app.listen(PORT, () => {
