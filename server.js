@@ -18,7 +18,10 @@ mongoose.connect(process.env.MONGO_URI)
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// ✅ Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, 'frontend'))); // <-- Serve frontend folder
 
 // ✅ Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -68,7 +71,6 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     const { name, contact, address, paymentMethod } = req.body;
     const screenshot = req.file ? req.file.filename : null;
 
-    // Parse cart safely
     let cart = [];
     try {
       cart = JSON.parse(req.body.cart);
@@ -135,13 +137,12 @@ app.post('/contact', async (req, res) => {
   }
 });
 
-// ✅ Start Server
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+// ✅ Route to serve admin.html directly
+app.get('/admin.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
 });
 
-
-// ✅ Start server
+// ✅ Start Server
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
 });
