@@ -16,7 +16,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 // ✅ CORS setup
 app.use(cors({
-  origin: "https://smilefe.onrender.com", // your frontend
+  origin: "https://smilefe.onrender.com",
   methods: ["GET", "POST", "DELETE"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -25,7 +25,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Serve static files
+// ✅ Static File Serving
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, 'frontend')));
 
@@ -35,14 +35,14 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// ✅ Multer setup
+// ✅ Multer Setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
 });
 const upload = multer({ storage });
 
-// ✅ Schemas
+// ✅ Mongoose Schemas
 const orderSchema = new mongoose.Schema({
   name: String,
   contact: String,
@@ -65,29 +65,34 @@ const contactSchema = new mongoose.Schema({
 });
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Root Test
+// ✅ Routes
+
+// Test route
 app.get('/', (req, res) => {
-  res.send('✅ Server is working!');
+  res.send('✅ Server is running!');
 });
 
-// ✅ Checkout Route
+// 📦 Checkout - Submit Order
 app.post('/checkout', upload.single('screenshot'), async (req, res) => {
   try {
-    const { name, contact, address, paymentMethod } = req.body;
+    const { name, contact, address, paymentMethod, cart } = req.body;
     const screenshot = req.file ? req.file.filename : null;
 
-    let cart = [];
+    if (!cart) return res.status(400).send('Cart is missing');
+
+    let parsedCart;
     try {
-      cart = JSON.parse(req.body.cart);
-      if (!Array.isArray(cart) || cart.length === 0) {
-        return res.status(400).send('Cart is empty or invalid');
-      }
+      parsedCart = JSON.parse(cart);
     } catch (err) {
-      console.error('❌ Failed to parse cart:', err);
+      console.error('❌ Failed to parse cart JSON:', err);
       return res.status(400).send('Invalid cart format');
     }
 
-    const ordersToSave = cart.map(item => ({
+    if (!Array.isArray(parsedCart) || parsedCart.length === 0) {
+      return res.status(400).send('Cart is empty');
+    }
+
+    const ordersToSave = parsedCart.map(item => ({
       name,
       contact,
       address,
@@ -107,45 +112,40 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
   }
 });
 
-// ✅ Get Orders
+// 📋 Get all orders
 app.get('/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
-    console.error('❌ Error fetching orders:', err);
     res.status(500).send('❌ Failed to fetch orders');
   }
 });
 
-// ✅ Delete Order
+// ❌ Delete specific order
 app.delete('/orders/:id', async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
-    res.status(200).send('✅ Order deleted');
+    res.send('✅ Order deleted');
   } catch (err) {
-    console.error('❌ Error deleting order:', err);
     res.status(500).send('❌ Failed to delete order');
   }
 });
 
-// ✅ Contact Form Route (with logging)
+// 📩 Contact form
 app.post('/contact', async (req, res) => {
   try {
-    console.log("📩 Contact form data received:", req.body);
     const { name, phone, message } = req.body;
-
-    const contactMessage = new ContactMessage({ name, phone, message });
-    await contactMessage.save();
-
-    res.send("✅ Message received! Our team will contact you soon.");
+    const newMessage = new ContactMessage({ name, phone, message });
+    await newMessage.save();
+    res.send('✅ Message received');
   } catch (err) {
-    console.error("❌ Error saving contact message:", err);
-    res.status(500).send("❌ Failed to send message.");
+    console.error('❌ Contact error:', err);
+    res.status(500).send('❌ Failed to send message');
   }
 });
 
-// ✅ Admin Page Serve
+// 🔐 Admin HTML
 app.get('/admin.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
 });
