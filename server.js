@@ -10,13 +10,13 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // ✅ CORS setup
 app.use(cors({
-  origin: "https://smilefe.onrender.com", // your frontend
+  origin: "https://smilefe.onrender.com", // ✅ frontend origin
   methods: ["GET", "POST", "DELETE"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -29,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.static(path.join(__dirname, 'frontend')));
 
-// ✅ Ensure uploads directory exists
+// ✅ Ensure uploads folder exists
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
@@ -42,7 +42,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ✅ Schemas
+// ✅ Order Schema
 const orderSchema = new mongoose.Schema({
   name: String,
   contact: String,
@@ -57,6 +57,7 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
+// ✅ Contact Schema
 const contactSchema = new mongoose.Schema({
   name: String,
   phone: String,
@@ -65,7 +66,7 @@ const contactSchema = new mongoose.Schema({
 });
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Root Test
+// ✅ Test Route
 app.get('/', (req, res) => {
   res.send('✅ Server is working!');
 });
@@ -80,11 +81,11 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     try {
       cart = JSON.parse(req.body.cart);
       if (!Array.isArray(cart) || cart.length === 0) {
-        return res.status(400).send('Cart is empty or invalid');
+        return res.status(400).json({ error: 'Cart is empty or invalid' });
       }
     } catch (err) {
       console.error('❌ Failed to parse cart:', err);
-      return res.status(400).send('Invalid cart format');
+      return res.status(400).json({ error: 'Invalid cart format' });
     }
 
     const ordersToSave = cart.map(item => ({
@@ -100,52 +101,55 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     }));
 
     await Order.insertMany(ordersToSave);
-    res.status(200).send('✅ Order saved successfully');
+    res.status(200).json({ message: '✅ Order saved successfully' });
   } catch (err) {
     console.error('❌ Error saving order:', err);
-    res.status(500).send('❌ Failed to save order');
+    res.status(500).json({ error: '❌ Failed to save order' });
   }
 });
 
-// ✅ Get Orders
+// ✅ Get all orders
 app.get('/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     console.error('❌ Error fetching orders:', err);
-    res.status(500).send('❌ Failed to fetch orders');
+    res.status(500).json({ error: '❌ Failed to fetch orders' });
   }
 });
 
-// ✅ Delete Order
+// ✅ Delete order
 app.delete('/orders/:id', async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
-    res.status(200).send('✅ Order deleted');
+    res.status(200).json({ message: '✅ Order deleted' });
   } catch (err) {
     console.error('❌ Error deleting order:', err);
-    res.status(500).send('❌ Failed to delete order');
+    res.status(500).json({ error: '❌ Failed to delete order' });
   }
 });
 
-// ✅ Contact Form Route (with logging)
+// ✅ Contact Form Route (fixed)
 app.post('/contact', async (req, res) => {
   try {
-    console.log("📩 Contact form data received:", req.body);
     const { name, phone, message } = req.body;
+
+    if (!name || !phone || !message) {
+      return res.status(400).json({ error: 'All fields are required.' });
+    }
 
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
 
-    res.send("✅ Message received! Our team will contact you soon.");
+    res.status(200).json({ message: '✅ Message received! Our team will contact you soon.' });
   } catch (err) {
-    console.error("❌ Error saving contact message:", err);
-    res.status(500).send("❌ Failed to send message.");
+    console.error('❌ Error saving contact message:', err);
+    res.status(500).json({ error: '❌ Failed to send message.' });
   }
 });
 
-// ✅ Admin Page Serve
+// ✅ Admin Page Route
 app.get('/admin.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
 });
