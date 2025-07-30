@@ -14,16 +14,20 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
+// ✅ CORS setup
+app.use(cors({
+  origin: "https://smilefe.onrender.com", // your frontend
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 // ✅ Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Serve uploads folder
+// ✅ Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// ✅ Serve frontend folder (fix for Render + static access)
-app.use('/', express.static(path.join(__dirname, 'frontend')));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
 // ✅ Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -38,7 +42,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ✅ Order Schema
+// ✅ Schemas
 const orderSchema = new mongoose.Schema({
   name: String,
   contact: String,
@@ -53,7 +57,6 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
-// ✅ Contact Message Schema
 const contactSchema = new mongoose.Schema({
   name: String,
   phone: String,
@@ -62,7 +65,7 @@ const contactSchema = new mongoose.Schema({
 });
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Root Test Route
+// ✅ Root Test
 app.get('/', (req, res) => {
   res.send('✅ Server is working!');
 });
@@ -104,7 +107,7 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
   }
 });
 
-// ✅ Get all orders
+// ✅ Get Orders
 app.get('/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -115,7 +118,7 @@ app.get('/orders', async (req, res) => {
   }
 });
 
-// ✅ Delete an order
+// ✅ Delete Order
 app.delete('/orders/:id', async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
@@ -126,17 +129,25 @@ app.delete('/orders/:id', async (req, res) => {
   }
 });
 
-// ✅ Contact Form Route
+// ✅ Contact Form Route (with logging)
 app.post('/contact', async (req, res) => {
   try {
+    console.log("📩 Contact form data received:", req.body);
     const { name, phone, message } = req.body;
+
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
+
     res.send("✅ Message received! Our team will contact you soon.");
   } catch (err) {
     console.error("❌ Error saving contact message:", err);
     res.status(500).send("❌ Failed to send message.");
   }
+});
+
+// ✅ Admin Page Serve
+app.get('/admin.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
 });
 
 // ✅ Start Server
