@@ -21,27 +21,26 @@ app.use(cors({
   allowedHeaders: ["Content-Type"]
 }));
 
+// ✅ Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Static Files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.static(path.join(__dirname, 'frontend')));
-
-// ✅ Ensure uploads folder exists
+// ✅ Static Folders
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
+app.use('/uploads', express.static(uploadsDir));
+app.use(express.static(path.join(__dirname, 'frontend')));
 
-// ✅ Multer config
+// ✅ Multer config for image uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
 });
 const upload = multer({ storage });
 
-// ✅ MongoDB Schemas
+// ✅ Order Schema
 const orderSchema = new mongoose.Schema({
   name: String,
   contact: String,
@@ -84,13 +83,15 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     }));
 
     await Order.insertMany(orders);
-    res.send('✅ Order saved');
+    res.status(200).send('✅ Order saved');
   } catch (err) {
     console.error('❌ Order error:', err);
     res.status(500).send('❌ Server error');
   }
 });
 
-// ✅ Start
+// ✅ Root Route
 app.get('/', (req, res) => res.send('✅ API is running'));
-app.listen(PORT, () => console.log(`✅ Server running on ${PORT}`));
+
+// ✅ Start Server
+app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
