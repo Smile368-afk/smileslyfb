@@ -5,6 +5,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer'); // ✅ ADDED
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,9 +15,19 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// ✅ CORS setup (allow frontend domain only)
+// ✅ CORS setup
+const allowedOrigins = [
+  'https://smilefe.onrender.com',
+  'https://www.smileslyf.com'
+];
 app.use(cors({
-  origin: "https://smilefe.onrender.com",
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ["GET", "POST", "DELETE"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -41,6 +52,15 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
 });
 const upload = multer({ storage });
+
+// ✅ Nodemailer setup (using Gmail)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,       // your Gmail
+    pass: process.env.GMAIL_APP_PASS    // app password
+  }
+});
 
 // ✅ Order Schema
 const orderSchema = new mongoose.Schema({
@@ -104,6 +124,31 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
 
     await Order.insertMany(ordersToSave);
     console.log("✅ Order saved:", ordersToSave.length, "items");
+
+    // ✅ Send Email Notification
+    const orderList = ordersToSave.map(o => (
+      `<li>${o.product} (Size: ${o.size}) - Qty: ${o.quantity} - Rs ${o.price}</li>`
+    )).join('');
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: process.env.GMAIL_USER,
+      subject: '🛒 New Order Received',
+      html: `
+        <h3>New Order Details</h3>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Contact:</strong> ${contact}</p>
+        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Payment Method:</strong> ${paymentMethod}</p>
+        <p><strong>Cart:</strong></p>
+        <ul>${orderList}</ul>
+        ${screenshot ? `<p><strong>Screenshot:</strong> Attached or check uploads folder</p>` : ''}
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('📧 Order email sent to admin');
+
     res.status(200).send('✅ Order saved successfully');
   } catch (err) {
     console.error('❌ Error saving order:', err);
@@ -156,7 +201,5 @@ app.get('/admin.html', (req, res) => {
 
 // ✅ Start Server
 app.listen(PORT, () => {
- console.log(`✅ Server running at http://localhost:${PORT}`);
-
+  console.log(`✅ Server running at http://localhost:${PORT}`);
 });
-
