@@ -5,6 +5,7 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer'); // ✅ NEW
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,17 +15,24 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
+// ✅ CORS setup
+app.use(cors({
+  origin: "https://smilefe.onrender.com",
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 // ✅ Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ Ensure uploads directory exists
+// ✅ Static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, 'frontend')));
+
+// ✅ Ensure uploads folder exists
 const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 
 // ✅ Multer setup
 const storage = multer.diskStorage({
@@ -48,7 +56,7 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
-// ✅ Contact Message Schema
+// ✅ Contact Schema
 const contactSchema = new mongoose.Schema({
   name: String,
   phone: String,
@@ -57,9 +65,20 @@ const contactSchema = new mongoose.Schema({
 });
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Root Test Route
+// ✅ Email Setup (Nodemailer)
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+});
+
+// ✅ Root Route
 app.get('/', (req, res) => {
-  res.send('✅ Server is working!');
+  res.send('✅ Backend is running!');
 });
 
 // ✅ Checkout Route
@@ -68,7 +87,6 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     const { name, contact, address, paymentMethod } = req.body;
     const screenshot = req.file ? req.file.filename : null;
 
-    // Parse cart safely
     let cart = [];
     try {
       cart = JSON.parse(req.body.cart);
@@ -93,14 +111,38 @@ app.post('/checkout', upload.single('screenshot'), async (req, res) => {
     }));
 
     await Order.insertMany(ordersToSave);
-    res.status(200).send('✅ Order saved successfully');
+    console.log("✅ Order saved:", ordersToSave.length, "items");
+
+    // ✅ Send email
+    const emailBody = `
+      <h2>🛒 New Order Received</h2>
+      <p><strong>Name:</strong> ${name}</p>
+      <p><strong>Contact:</strong> ${contact}</p>
+      <p><strong>Address:</strong> ${address}</p>
+      <p><strong>Payment Method:</strong> ${paymentMethod}</p>
+      <h3>Items:</h3>
+      <ul>
+        ${cart.map(item => `
+          <li>${item.product} - Size: ${item.size} - Qty: ${item.quantity} - Rs. ${item.price}</li>
+        `).join('')}
+      </ul>
+    `;
+
+    await transporter.sendMail({
+      from: `"SmilesLyf Orders" <${process.env.SMTP_USER}>`,
+      to: process.env.TO_EMAIL,
+      subject: '🛍️ New Order from SmilesLyf',
+      html: emailBody
+    });
+
+    res.status(200).send('✅ Order saved & email sent');
   } catch (err) {
     console.error('❌ Error saving order:', err);
     res.status(500).send('❌ Failed to save order');
   }
 });
 
-// ✅ Get all orders
+// ✅ Admin Get Orders
 app.get('/orders', async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -111,7 +153,7 @@ app.get('/orders', async (req, res) => {
   }
 });
 
-// ✅ Delete an order
+// ✅ Delete Order
 app.delete('/orders/:id', async (req, res) => {
   try {
     await Order.findByIdAndDelete(req.params.id);
@@ -122,7 +164,7 @@ app.delete('/orders/:id', async (req, res) => {
   }
 });
 
-// ✅ Contact Form Route
+// ✅ Contact Message
 app.post('/contact', async (req, res) => {
   try {
     const { name, phone, message } = req.body;
@@ -133,6 +175,11 @@ app.post('/contact', async (req, res) => {
     console.error("❌ Error saving contact message:", err);
     res.status(500).send("❌ Failed to send message.");
   }
+});
+
+// ✅ Serve Admin Page
+app.get('/admin.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
 });
 
 // ✅ Start Server
