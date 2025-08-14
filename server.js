@@ -5,201 +5,140 @@ const multer = require('multer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const nodemailer = require('nodemailer'); // ✅ ADDED
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
+  .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// ✅ CORS setup
-const allowedOrigins = [
-  'https://smilefe.onrender.com',
-  'https://www.smileslyf.com'
-];
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type"]
-}));
-
 // ✅ Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// ✅ Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.static(path.join(__dirname, 'frontend')));
 
-// ✅ Ensure uploads folder exists
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-
-// ✅ Multer setup for image uploads
+// ✅ Multer storage for payment screenshots
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
 });
 const upload = multer({ storage });
 
-// ✅ Nodemailer setup (using Gmail)
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,       // your Gmail
-    pass: process.env.GMAIL_APP_PASS    // app password
-  }
-});
-
-// ✅ Order Schema
-const orderSchema = new mongoose.Schema({
+// ✅ MongoDB Schemas
+const OrderSchema = new mongoose.Schema({
   name: String,
-  contact: String,
+  phone: String,
   address: String,
-  product: String,
-  size: String,
-  quantity: Number,
-  price: Number,
   paymentMethod: String,
-  screenshot: String,
-  createdAt: { type: Date, default: Date.now }
+  products: Array,
+  paymentScreenshot: String,
+  date: { type: Date, default: Date.now }
 });
-const Order = mongoose.model('Order', orderSchema);
+const Order = mongoose.model('Order', OrderSchema);
 
-// ✅ Contact Message Schema
-const contactSchema = new mongoose.Schema({
+const ContactSchema = new mongoose.Schema({
   name: String,
   phone: String,
   message: String,
-  createdAt: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now }
 });
-const ContactMessage = mongoose.model('ContactMessage', contactSchema);
+const ContactMessage = mongoose.model('ContactMessage', ContactSchema);
 
-// ✅ Root Route
-app.get('/', (req, res) => {
-  res.send('✅ Backend is running!');
+// ✅ Nodemailer Transporter (Gmail)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASS
+  }
 });
 
-// ✅ Checkout Route (Order Submission)
-app.post('/checkout', upload.single('screenshot'), async (req, res) => {
+// ✅ Checkout Route
+app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
   try {
-    const { name, contact, address, paymentMethod } = req.body;
-    const screenshot = req.file ? req.file.filename : null;
+    console.log("📦 Checkout Data Received:", req.body);
+    const { name, phone, address, paymentMethod, products } = req.body;
 
-    console.log("🛒 Received order form data:", req.body);
-
-    let cart = [];
-    try {
-      cart = JSON.parse(req.body.cart);
-      if (!Array.isArray(cart) || cart.length === 0) {
-        return res.status(400).send('Cart is empty or invalid');
-      }
-    } catch (err) {
-      console.error('❌ Failed to parse cart:', err);
-      return res.status(400).send('Invalid cart format');
-    }
-
-    const ordersToSave = cart.map(item => ({
+    const newOrder = new Order({
       name,
-      contact,
+      phone,
       address,
-      product: item.product,
-      size: item.size,
-      quantity: item.quantity,
-      price: item.price,
       paymentMethod,
-      screenshot
-    }));
+      products: JSON.parse(products),
+      paymentScreenshot: req.file ? `/uploads/${req.file.filename}` : null
+    });
 
-    await Order.insertMany(ordersToSave);
-    console.log("✅ Order saved:", ordersToSave.length, "items");
+    await newOrder.save();
 
-    // ✅ Send Email Notification
-    const orderList = ordersToSave.map(o => (
-      `<li>${o.product} (Size: ${o.size}) - Qty: ${o.quantity} - Rs ${o.price}</li>`
-    )).join('');
-
+    // Send email to admin
     const mailOptions = {
       from: process.env.GMAIL_USER,
       to: process.env.GMAIL_USER,
-      subject: '🛒 New Order Received',
+      subject: "🛒 New Order Received",
       html: `
         <h3>New Order Details</h3>
         <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Contact:</strong> ${contact}</p>
+        <p><strong>Phone:</strong> ${phone}</p>
         <p><strong>Address:</strong> ${address}</p>
         <p><strong>Payment Method:</strong> ${paymentMethod}</p>
-        <p><strong>Cart:</strong></p>
-        <ul>${orderList}</ul>
-        ${screenshot ? `<p><strong>Screenshot:</strong> Attached or check uploads folder</p>` : ''}
+        <p><strong>Products:</strong> ${products}</p>
+        ${req.file ? `<p><strong>Screenshot:</strong> <a href="${process.env.BACKEND_URL}/uploads/${req.file.filename}">View</a></p>` : ""}
       `
     };
-
     await transporter.sendMail(mailOptions);
-    console.log('📧 Order email sent to admin');
 
-    res.status(200).send('✅ Order saved successfully');
+    res.send("✅ Order placed successfully!");
   } catch (err) {
-    console.error('❌ Error saving order:', err);
-    res.status(500).send('❌ Failed to save order');
+    console.error("❌ Error saving order:", err);
+    res.status(500).send("❌ Failed to place order.");
   }
 });
 
-// ✅ Get All Orders (Admin Panel)
-app.get('/orders', async (req, res) => {
-  try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err) {
-    console.error('❌ Error fetching orders:', err);
-    res.status(500).send('❌ Failed to fetch orders');
-  }
-});
-
-// ✅ Delete Order by ID
-app.delete('/orders/:id', async (req, res) => {
-  try {
-    await Order.findByIdAndDelete(req.params.id);
-    res.status(200).send('✅ Order deleted');
-  } catch (err) {
-    console.error('❌ Error deleting order:', err);
-    res.status(500).send('❌ Failed to delete order');
-  }
-});
-
-// ✅ Contact Form Route
+// ✅ Contact Form Route (Updated with Email Sending)
 app.post('/contact', async (req, res) => {
   try {
     console.log("📩 Contact message received:", req.body);
     const { name, phone, message } = req.body;
 
+    // Save to DB
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
 
+    // Send Email Notification to Admin
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: process.env.GMAIL_USER,
+      subject: "📩 New Contact Form Submission",
+      html: `
+        <h3>New Contact Message</h3>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Phone:</strong> ${phone}</p>
+        <p><strong>Message:</strong><br>${message}</p>
+      `
+    };
+    await transporter.sendMail(mailOptions);
+    console.log('📧 Contact form email sent to admin');
+
     res.send("✅ Message received! Our team will contact you soon.");
   } catch (err) {
-    console.error("❌ Error saving contact message:", err);
+    console.error("❌ Error processing contact message:", err);
     res.status(500).send("❌ Failed to send message.");
   }
 });
 
-// ✅ Admin Page Serve (optional)
-app.get('/admin.html', (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
-});
-
 // ✅ Start Server
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
