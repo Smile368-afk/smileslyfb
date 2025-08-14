@@ -61,7 +61,6 @@ const contactSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// ✅ NEW: Reviews Schema
 const reviewSchema = new mongoose.Schema({
   name: String,
   rating: Number, // 1-5 stars
@@ -124,7 +123,6 @@ app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
 // ✅ Contact Form Route
 app.post('/contact', async (req, res) => {
   try {
-    console.log("📩 Contact message received:", req.body);
     const { name, phone, message } = req.body;
 
     const contactMessage = new ContactMessage({ name, phone, message });
@@ -152,7 +150,7 @@ app.post('/contact', async (req, res) => {
   }
 });
 
-// ✅ NEW: Add Review Route
+// ✅ Add Review Route (Saves + Sends Email)
 app.post('/reviews', async (req, res) => {
   try {
     const { name, rating, comment } = req.body;
@@ -163,6 +161,22 @@ app.post('/reviews', async (req, res) => {
     const newReview = new Review({ name, rating, comment });
     await newReview.save();
 
+    // Send Email Notification for Review
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: "smileslyf29@gmail.com",
+      subject: "⭐ New Customer Review Submitted",
+      html: `
+        <h3>New Review Received</h3>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Rating:</strong> ${rating} / 5</p>
+        <p><strong>Comment:</strong><br>${comment}</p>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('📧 Review email sent to admin');
+
     res.send("✅ Review submitted successfully!");
   } catch (err) {
     console.error("❌ Error saving review:", err);
@@ -170,7 +184,7 @@ app.post('/reviews', async (req, res) => {
   }
 });
 
-// ✅ NEW: Get Reviews Route
+// ✅ Get Reviews Route
 app.get('/reviews', async (req, res) => {
   try {
     const reviews = await Review.find().sort({ createdAt: -1 });
@@ -181,7 +195,7 @@ app.get('/reviews', async (req, res) => {
   }
 });
 
-// ✅ NEW: Terms & Services Page (static HTML)
+// ✅ Terms & Services Page (static HTML)
 app.get('/terms', (req, res) => {
   res.sendFile(path.join(__dirname, 'terms.html'));
 });
