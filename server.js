@@ -64,7 +64,7 @@ const contactSchema = new mongoose.Schema({
 const Order = mongoose.model('Order', orderSchema);
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
 
-// ✅ Checkout Route
+// ✅ Checkout Route (UPDATED email recipient)
 app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
   try {
     const { name, email, phone, address, city, paymentMethod, easypaisaNumber, cart } = req.body;
@@ -84,10 +84,10 @@ app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
 
     await newOrder.save();
 
-    // Send Email to Admin
+    // Send Email to Admin (now same as contact form email)
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: process.env.GMAIL_USER,
+      to: "smileslyf29@gmail.com", // ✅ updated to match contact form email
       subject: '🛒 New Order Received',
       html: `
         <h3>Order Details</h3>
@@ -125,7 +125,7 @@ app.post('/contact', async (req, res) => {
     // Send Email Notification
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: "smileslyf29@gmail.com", // 🔹 Change to the email you want to receive messages
+      to: "smileslyf29@gmail.com", // 🔹 New email
       subject: "📩 New Contact Form Submission",
       html: `
         <h3>New Contact Message</h3>
@@ -148,5 +148,3 @@ app.post('/contact', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-
-
