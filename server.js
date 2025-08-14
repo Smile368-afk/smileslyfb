@@ -12,51 +12,26 @@ const PORT = process.env.PORT || 3000;
 
 // ✅ MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+  .then(() => console.log('✅ MongoDB Connected'))
+  .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// ✅ Middleware
+// ✅ Middlewares
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ Multer storage for payment screenshots
+// ✅ Multer Setup (for EasyPaisa screenshots)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir);
-    }
-    cb(null, uploadDir);
+    cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    cb(null, Date.now() + '-' + file.originalname);
   }
 });
 const upload = multer({ storage });
 
-// ✅ MongoDB Schemas
-const OrderSchema = new mongoose.Schema({
-  name: String,
-  phone: String,
-  address: String,
-  paymentMethod: String,
-  products: Array,
-  paymentScreenshot: String,
-  date: { type: Date, default: Date.now }
-});
-const Order = mongoose.model('Order', OrderSchema);
-
-const ContactSchema = new mongoose.Schema({
-  name: String,
-  phone: String,
-  message: String,
-  date: { type: Date, default: Date.now }
-});
-const ContactMessage = mongoose.model('ContactMessage', ContactSchema);
-
-// ✅ Nodemailer Transporter (Gmail)
+// ✅ Nodemailer Transporter
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -65,48 +40,79 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// ✅ MongoDB Schemas
+const orderSchema = new mongoose.Schema({
+  name: String,
+  email: String,
+  phone: String,
+  address: String,
+  city: String,
+  paymentMethod: String,
+  easypaisaNumber: String,
+  paymentScreenshot: String,
+  cart: Array,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const contactSchema = new mongoose.Schema({
+  name: String,
+  phone: String,
+  message: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Order = mongoose.model('Order', orderSchema);
+const ContactMessage = mongoose.model('ContactMessage', contactSchema);
+
 // ✅ Checkout Route
 app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
   try {
-    console.log("📦 Checkout Data Received:", req.body);
-    const { name, phone, address, paymentMethod, products } = req.body;
+    const { name, email, phone, address, city, paymentMethod, easypaisaNumber, cart } = req.body;
+    const paymentScreenshot = req.file ? req.file.path : null;
 
     const newOrder = new Order({
       name,
+      email,
       phone,
       address,
+      city,
       paymentMethod,
-      products: JSON.parse(products),
-      paymentScreenshot: req.file ? `/uploads/${req.file.filename}` : null
+      easypaisaNumber,
+      paymentScreenshot,
+      cart: JSON.parse(cart)
     });
 
     await newOrder.save();
 
-    // Send email to admin
+    // Send Email to Admin
     const mailOptions = {
       from: process.env.GMAIL_USER,
       to: process.env.GMAIL_USER,
-      subject: "🛒 New Order Received",
+      subject: '🛒 New Order Received',
       html: `
-        <h3>New Order Details</h3>
+        <h3>Order Details</h3>
         <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
         <p><strong>Phone:</strong> ${phone}</p>
-        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Address:</strong> ${address}, ${city}</p>
         <p><strong>Payment Method:</strong> ${paymentMethod}</p>
-        <p><strong>Products:</strong> ${products}</p>
-        ${req.file ? `<p><strong>Screenshot:</strong> <a href="${process.env.BACKEND_URL}/uploads/${req.file.filename}">View</a></p>` : ""}
+        <p><strong>EasyPaisa Number:</strong> ${easypaisaNumber || 'N/A'}</p>
+        <p><strong>Cart:</strong> ${cart}</p>
+        ${paymentScreenshot ? `<p><a href="${req.protocol}://${req.get('host')}/${paymentScreenshot}" target="_blank">View Screenshot</a></p>` : ''}
       `
     };
-    await transporter.sendMail(mailOptions);
 
-    res.send("✅ Order placed successfully!");
+    await transporter.sendMail(mailOptions);
+    console.log('📧 Order email sent to admin');
+
+    res.status(200).send({ success: true, message: '✅ Order placed successfully!' });
   } catch (err) {
-    console.error("❌ Error saving order:", err);
-    res.status(500).send("❌ Failed to place order.");
+    console.error('❌ Error placing order:', err);
+    res.status(500).send({ success: false, message: '❌ Failed to place order.' });
   }
 });
 
-// ✅ Contact Form Route (Updated with Email Sending)
+// ✅ Contact Form Route
 app.post('/contact', async (req, res) => {
   try {
     console.log("📩 Contact message received:", req.body);
@@ -116,10 +122,10 @@ app.post('/contact', async (req, res) => {
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
 
-    // Send Email Notification to Admin
+    // Send Email Notification
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: process.env.GMAIL_USER,
+      to: "newemail@example.com", // 🔹 Change to the email you want to receive messages
       subject: "📩 New Contact Form Submission",
       html: `
         <h3>New Contact Message</h3>
@@ -128,8 +134,9 @@ app.post('/contact', async (req, res) => {
         <p><strong>Message:</strong><br>${message}</p>
       `
     };
+
     await transporter.sendMail(mailOptions);
-    console.log('📧 Contact form email sent to admin');
+    console.log('📧 Contact form email sent');
 
     res.send("✅ Message received! Our team will contact you soon.");
   } catch (err) {
@@ -138,7 +145,6 @@ app.post('/contact', async (req, res) => {
   }
 });
 
-// ✅ Start Server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
