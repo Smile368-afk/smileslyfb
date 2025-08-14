@@ -125,7 +125,7 @@ app.post('/contact', async (req, res) => {
     // Send Email Notification
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: "newemail@example.com", // 🔹 Change to the email you want to receive messages
+      to: "smileslyf29@example.com", // 🔹 Change to the email you want to receive messages
       subject: "📩 New Contact Form Submission",
       html: `
         <h3>New Contact Message</h3>
@@ -148,3 +148,4 @@ app.post('/contact', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
