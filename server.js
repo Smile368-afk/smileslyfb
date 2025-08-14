@@ -61,10 +61,19 @@ const contactSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// ✅ NEW: Reviews Schema
+const reviewSchema = new mongoose.Schema({
+  name: String,
+  rating: Number, // 1-5 stars
+  comment: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
 const Order = mongoose.model('Order', orderSchema);
 const ContactMessage = mongoose.model('ContactMessage', contactSchema);
+const Review = mongoose.model('Review', reviewSchema);
 
-// ✅ Checkout Route (UPDATED email recipient)
+// ✅ Checkout Route
 app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
   try {
     const { name, email, phone, address, city, paymentMethod, easypaisaNumber, cart } = req.body;
@@ -84,10 +93,10 @@ app.post('/checkout', upload.single('paymentScreenshot'), async (req, res) => {
 
     await newOrder.save();
 
-    // Send Email to Admin (now same as contact form email)
+    // Send Email to Admin
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: "smileslyf29@gmail.com", // ✅ updated to match contact form email
+      to: "smileslyf29@gmail.com",
       subject: '🛒 New Order Received',
       html: `
         <h3>Order Details</h3>
@@ -118,14 +127,12 @@ app.post('/contact', async (req, res) => {
     console.log("📩 Contact message received:", req.body);
     const { name, phone, message } = req.body;
 
-    // Save to DB
     const contactMessage = new ContactMessage({ name, phone, message });
     await contactMessage.save();
 
-    // Send Email Notification
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: "smileslyf29@gmail.com", // 🔹 New email
+      to: "smileslyf29@gmail.com",
       subject: "📩 New Contact Form Submission",
       html: `
         <h3>New Contact Message</h3>
@@ -143,6 +150,40 @@ app.post('/contact', async (req, res) => {
     console.error("❌ Error processing contact message:", err);
     res.status(500).send("❌ Failed to send message.");
   }
+});
+
+// ✅ NEW: Add Review Route
+app.post('/reviews', async (req, res) => {
+  try {
+    const { name, rating, comment } = req.body;
+    if (!name || !rating || !comment) {
+      return res.status(400).send("❌ All fields are required.");
+    }
+
+    const newReview = new Review({ name, rating, comment });
+    await newReview.save();
+
+    res.send("✅ Review submitted successfully!");
+  } catch (err) {
+    console.error("❌ Error saving review:", err);
+    res.status(500).send("❌ Failed to submit review.");
+  }
+});
+
+// ✅ NEW: Get Reviews Route
+app.get('/reviews', async (req, res) => {
+  try {
+    const reviews = await Review.find().sort({ createdAt: -1 });
+    res.json(reviews);
+  } catch (err) {
+    console.error("❌ Error fetching reviews:", err);
+    res.status(500).send("❌ Failed to load reviews.");
+  }
+});
+
+// ✅ NEW: Terms & Services Page (static HTML)
+app.get('/terms', (req, res) => {
+  res.sendFile(path.join(__dirname, 'terms.html'));
 });
 
 app.listen(PORT, () => {
